@@ -1,66 +1,51 @@
-import { Injectable } from "@nestjs/common";
-import { CreateProductDto } from "./product.create.dto";
-import { UpdateProductDto } from "./product.update.dto";
+import { Injectable, NotFoundException } from '@nestjs/common';
+import { CreateProductDto } from './dto/product.create.dto';
+import { UpdateProductDto } from './dto/product.update.dto';
 
-@Injectable({})
+export interface Product {
+  id: string;
+  name: string;
+  price: number;
+}
+
+@Injectable()
 export class ProductsService {
+  private products: Product[] = [
+    { id: '1', name: 'Sample Product', price: 100 },
+    { id: '2', name: 'Another Product', price: 150 },
+  ];
 
-    private products = [{
-        id: '1',
-        name: 'Sample Product',
-        price: 100
-    },
-    {
-        id: '2',
-        name: 'Another Product',
-        price: 150
-    }
-    ];
+  findAll(): Product[] {
+    return this.products;
+  }
 
-    getProducts(): string {
-        return JSON.stringify(this.products);
-    }
+  findOne(id: string): Product {
+    const product = this.products.find((p) => p.id === id);
+    if (!product)
+      throw new NotFoundException(`Product with ID ${id} not found`);
+    return product;
+  }
 
-    getProductById(id: string): string {
-        return JSON.stringify(this.products.find(product => product.id === id));
-    }
+  create(createProductDto: CreateProductDto): Product {
+    const newProduct: Product = {
+      id: crypto.randomUUID(),
+      ...createProductDto,
+    };
+    this.products.push(newProduct);
+    return newProduct;
+  }
 
-    createProduct(createProductDto: CreateProductDto): string {
-        this.products.push({
-            id: (this.products.length + 1).toString(),
-            name: createProductDto.name,
-            price: createProductDto.price
-        });
-        
-        return JSON.stringify(this.products[this.products.length - 1]);
-    }
+  update(id: string, updateProductDto: UpdateProductDto): Product {
+    const product = this.findOne(id);
+    Object.assign(product, updateProductDto);
+    return product;
+  }
 
-    updateProduct(id: string, updateProductDto: UpdateProductDto): string {
-        const product = this.products.find(product => product.id === id);
-        if (product) {
-            product.name = updateProductDto.name ?? product.name;
-            product.price = updateProductDto.price ?? product.price;
-        }
-
-        return JSON.stringify(product);
-    }
-
-    partiallyUpdateProduct(id: string, updateProductDto: UpdateProductDto): string {
-        const product = this.products.find(product => product.id === id);
-        if (product) {
-            product.price = updateProductDto.price ?? product.price;
-            product.name = updateProductDto.name ?? product.name;
-        }
-
-        return JSON.stringify(product);
-    }
-
-    deleteProduct(id: string): string {
-        const productIndex = this.products.findIndex(product => product.id === id);
-        if (productIndex > -1) {
-            this.products.splice(productIndex, 1);
-        }
-
-        return JSON.stringify(this.products);
-    }
+  remove(id: string): { message: string } {
+    const index = this.products.findIndex((p) => p.id === id);
+    if (index === -1)
+      throw new NotFoundException(`Product with ID ${id} not found`);
+    this.products.splice(index, 1);
+    return { message: 'Product deleted successfully' };
+  }
 }
