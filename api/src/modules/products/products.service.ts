@@ -1,4 +1,3 @@
-// src/products/products.service.ts
 import {
   Injectable,
   NotFoundException,

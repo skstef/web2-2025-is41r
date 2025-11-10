@@ -1,4 +1,3 @@
-// src/deals/deals.service.ts
 import {
   Injectable,
   NotFoundException,
