@@ -9,10 +9,11 @@ import {
   Delete,
   HttpCode,
 } from '@nestjs/common';
-import { DealsService, type Deal } from './deals.service';
+import { DealsService } from './deals.service';
 import { CreateDealDto } from './dto/deal.create.dto';
 import { UpdateDealDto } from './dto/deal.update.dto';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
+import { Deal } from './deal.entity';
 
 @ApiTags('Deals')
 @Controller('deals')
@@ -22,44 +23,51 @@ export class DealsController {
   @Get()
   @ApiOperation({ summary: 'List all deals' })
   @ApiResponse({ status: 200 })
-  getAll(): Deal[] {
+  async getAll(): Promise<Deal[]> {
     return this.dealsService.findAll();
   }
 
   @Get(':id')
-  @ApiOperation({ summary: 'Get deal by id' })
+  @ApiOperation({ summary: 'Get deal by ID' })
   @ApiResponse({ status: 200 })
-  getOne(@Param('id') id: string): Deal {
+  @ApiResponse({ status: 404, description: 'Deal not found' })
+  async getById(@Param('id') id: string): Promise<Deal> {
     return this.dealsService.findOne(id);
   }
 
   @Post()
   @HttpCode(201)
-  @ApiOperation({ summary: 'Create a deal' })
+  @ApiOperation({ summary: 'Create a new deal' })
   @ApiResponse({ status: 201 })
-  create(@Body() dto: CreateDealDto): Deal {
+  async create(@Body() dto: CreateDealDto): Promise<Deal> {
     return this.dealsService.create(dto);
   }
 
   @Put(':id')
-  @ApiOperation({ summary: 'Full update' })
+  @ApiOperation({ summary: 'Fully update deal' })
   @ApiResponse({ status: 200 })
-  update(@Param('id') id: string, @Body() dto: UpdateDealDto): Deal {
+  async update(
+    @Param('id') id: string,
+    @Body() dto: UpdateDealDto,
+  ): Promise<Deal> {
     return this.dealsService.update(id, dto);
   }
 
   @Patch(':id')
-  @ApiOperation({ summary: 'Partial update' })
+  @ApiOperation({ summary: 'Partially update deal' })
   @ApiResponse({ status: 200 })
-  patch(@Param('id') id: string, @Body() dto: UpdateDealDto): Deal {
+  async patch(
+    @Param('id') id: string,
+    @Body() dto: UpdateDealDto,
+  ): Promise<Deal> {
     return this.dealsService.update(id, dto);
   }
 
   @Delete(':id')
   @HttpCode(200)
   @ApiOperation({ summary: 'Delete deal' })
-  @ApiResponse({ status: 200, description: 'Deleted' })
-  remove(@Param('id') id: string) {
+  @ApiResponse({ status: 200, description: 'Deal deleted' })
+  async remove(@Param('id') id: string): Promise<{ message: string }> {
     return this.dealsService.remove(id);
   }
 }

@@ -1,86 +1,60 @@
 import {
-  BadRequestException,
-  forwardRef,
-  Inject,
   Injectable,
   NotFoundException,
+  BadRequestException,
+  Inject,
+  forwardRef,
 } from '@nestjs/common';
-import { CreateSupplierDto } from './dto/supplier.create.dto';
-import { UpdateSupplierDto } from './dto/supplier.update.dto';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 import { DealsService } from '../deals/deals.service';
 import { ProductsService } from '../products/products.service';
-
-export interface Supplier {
-  id: string;
-  name: string;
-  email: string;
-  phone: string;
-  address?: string;
-}
+import { Supplier } from './supplier.entity';
+import { CreateSupplierDto } from './dto/supplier.create.dto';
+import { UpdateSupplierDto } from './dto/supplier.update.dto';
 
 @Injectable()
 export class SuppliersService {
   constructor(
+    @InjectRepository(Supplier)
+    private suppliersRepo: Repository<Supplier>,
+
+    @Inject(forwardRef(() => DealsService))
     private readonly dealsService: DealsService,
 
     @Inject(forwardRef(() => ProductsService))
     private readonly productsService: ProductsService,
   ) {}
 
-  private suppliers: Supplier[] = [
-    {
-      id: 'f5cc5fd9-0e86-48b9-b484-382c8d9b1d8b',
-      name: 'Global Supplies Ltd',
-      email: 'info@globalsupplies.com',
-      phone: '+1987654321',
-      address: '456 Supply Rd',
-    },
-    {
-      id: 'c3fbcbdc-34d0-4941-9c27-a6c84489ab2b',
-      name: 'China Manufacturing Co.',
-      email: 'info@china-mac.cn',
-      phone: '+1123456987',
-      address: 'Mao Avenue 7',
-    },
-  ];
-
-  findAll(): Supplier[] {
-    return this.suppliers;
+  async findAll(): Promise<Supplier[]> {
+    return this.suppliersRepo.find();
   }
 
-  findOne(id: string): Supplier {
-    const supplier = this.suppliers.find((s) => s.id === id);
+  async findOne(id: string): Promise<Supplier> {
+    const supplier = await this.suppliersRepo.findOneBy({ id });
     if (!supplier)
       throw new NotFoundException(`Supplier with ID ${id} not found`);
     return supplier;
   }
 
-  create(createSupplierDto: CreateSupplierDto): Supplier {
-    const newSupplier: Supplier = {
-      id: crypto.randomUUID(),
-      ...createSupplierDto,
-    };
-    this.suppliers.push(newSupplier);
-    return newSupplier;
+  async create(dto: CreateSupplierDto): Promise<Supplier> {
+    const supplier = this.suppliersRepo.create(dto as Partial<Supplier>);
+    return this.suppliersRepo.save(supplier);
   }
 
-  update(id: string, updateSupplierDto: UpdateSupplierDto): Supplier {
-    const supplier = this.findOne(id);
-    Object.assign(supplier, updateSupplierDto);
-    return supplier;
+  async update(id: string, dto: UpdateSupplierDto): Promise<Supplier> {
+    const supplier = await this.findOne(id);
+    Object.assign(supplier, dto);
+    return this.suppliersRepo.save(supplier);
   }
 
-  remove(id: string): { message: string } {
-    const index = this.suppliers.findIndex((s) => s.id === id);
-    if (index === -1)
-      throw new NotFoundException(
-        `Cannot delete supplier: Supplier with ID ${id} not found`,
-      );
+  async remove(id: string): Promise<{ message: string }> {
+    await this.findOne(id); // will throw if not exists
 
     // Check if any product uses this supplier
-    const productInUse = this.productsService
+    const productInUse = await this.productsService
       .findAll()
-      .some((p) => p.supplierId === id);
+      .then((products) => products.some((p) => p.supplierId === id));
 
     if (productInUse) {
       throw new BadRequestException(
@@ -89,21 +63,27 @@ export class SuppliersService {
     }
 
     // Check if any deal uses a product from this supplier
-    const productIds = this.productsService
-      .findAll()
+    const productIds = (await this.productsService.findAll())
       .filter((p) => p.supplierId === id)
       .map((p) => p.id);
-    const dealInUse = productIds.some((pid) =>
-      this.dealsService.hasDealsWithProduct(pid),
-    );
+
+    const dealInUse = await Promise.all(
+      productIds.map((pid) => this.dealsService.hasDealsWithProduct(pid)),
+    ).then((arr) => arr.some(Boolean));
+
     if (dealInUse) {
       throw new BadRequestException(
         'Cannot delete supplier: deals are linked via products',
       );
     }
 
-    const idx = this.suppliers.findIndex((s) => s.id === id);
-    this.suppliers.splice(idx, 1);
+    const res = await this.suppliersRepo.delete({ id });
+    if (res.affected === 0) {
+      throw new NotFoundException(
+        `Cannot delete supplier: Supplier with ID ${id} not found`,
+      );
+    }
+
     return { message: 'Supplier deleted' };
   }
 }

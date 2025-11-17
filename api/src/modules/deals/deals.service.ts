@@ -2,48 +2,23 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
-  forwardRef,
   Inject,
+  forwardRef,
 } from '@nestjs/common';
-import { CreateDealDto } from './dto/deal.create.dto';
-import { UpdateDealDto } from './dto/deal.update.dto';
+import { Repository } from 'typeorm';
+import { InjectRepository } from '@nestjs/typeorm';
 import { ProductsService } from '../products/products.service';
 import { ClientsService } from '../clients/clients.service';
-
-export interface Deal {
-  id: string;
-  title: string;
-  clientId: string;
-  productId: string;
-  amount: number;
-  status: string;
-  createdAt: string;
-}
+import { Deal } from './deal.entity';
+import { CreateDealDto } from './dto/deal.create.dto';
+import { UpdateDealDto } from './dto/deal.update.dto';
 
 @Injectable()
 export class DealsService {
-  private deals: Deal[] = [
-    {
-      id: '816d34f0-fdea-49b6-a9ae-57cb35a060f8',
-      title: 'Laptop Sale',
-      clientId: '53e018bc-4523-46cd-8d47-3831cf4b938e',
-      productId: '164b834f-2c85-4ef6-88b9-25362b9401de',
-      amount: 500,
-      status: 'sent',
-      createdAt: '2025-11-10T23:30:54.193Z',
-    },
-    {
-      id: '372f7988-09fc-4d2c-ab9f-383147b8d67e',
-      title: 'Mouse Sale',
-      clientId: '53e018bc-4523-46cd-8d47-3831cf4b938e',
-      productId: '68edb317-894d-4f81-9661-da81bf4851b9',
-      amount: 500,
-      status: 'arrived',
-      createdAt: '2025-11-10T23:31:27.139Z',
-    },
-  ];
-
   constructor(
+    @InjectRepository(Deal)
+    private dealsRepo: Repository<Deal>,
+
     @Inject(forwardRef(() => ProductsService))
     private readonly productsService: ProductsService,
 
@@ -51,65 +26,68 @@ export class DealsService {
     private readonly clientsService: ClientsService,
   ) {}
 
-  findAll(): Deal[] {
-    return this.deals;
+  async findAll(): Promise<Deal[]> {
+    return this.dealsRepo.find();
   }
 
-  findOne(id: string): Deal {
-    const deal = this.deals.find((d) => d.id === id);
+  async findOne(id: string): Promise<Deal> {
+    const deal = await this.dealsRepo.findOneBy({ id });
     if (!deal) throw new NotFoundException(`Deal #${id} not found`);
     return deal;
   }
 
-  create(dto: CreateDealDto): Deal {
-    this.validateClientAndProduct(dto.clientId, dto.productId);
-    const newDeal: Deal = {
-      id: crypto.randomUUID(),
+  async create(dto: CreateDealDto): Promise<Deal> {
+    await this.validateClientAndProduct(dto.clientId, dto.productId);
+
+    const newDeal = this.dealsRepo.create({
       ...dto,
-      createdAt: new Date().toISOString(),
-    };
-    this.deals.push(newDeal);
-    return newDeal;
+    } as Partial<Deal>);
+
+    return this.dealsRepo.save(newDeal);
   }
 
-  update(id: string, dto: UpdateDealDto): Deal {
-    const deal = this.findOne(id);
+  async update(id: string, dto: UpdateDealDto): Promise<Deal> {
+    const deal = await this.findOne(id);
+
+    const clientId = dto.clientId ?? deal.clientId;
+    const productId = dto.productId ?? deal.productId;
+
     if (dto.clientId || dto.productId) {
-      this.validateClientAndProduct(
-        dto.clientId || deal.clientId,
-        dto.productId || deal.productId,
-      );
+      await this.validateClientAndProduct(clientId, productId);
     }
+
     Object.assign(deal, dto);
-    return deal;
+    return this.dealsRepo.save(deal);
   }
 
-  remove(id: string): { message: string } {
-    const idx = this.deals.findIndex((d) => d.id === id);
-    if (idx === -1) throw new NotFoundException(`Deal #${id} not found`);
-    this.deals.splice(idx, 1);
+  async remove(id: string): Promise<{ message: string }> {
+    const res = await this.dealsRepo.delete({ id });
+    if (res.affected === 0)
+      throw new NotFoundException(`Deal #${id} not found`);
     return { message: 'Deal deleted' };
   }
 
-  // --- Block deletion of Supplier/Client if deals exist ---
-  hasDealsWithClient(clientId: string): boolean {
-    return this.deals.some((d) => d.clientId === clientId);
+  // used by other services:
+  async hasDealsWithClient(clientId: string): Promise<boolean> {
+    const count = await this.dealsRepo.count({ where: { clientId } });
+    return count > 0;
   }
 
-  hasDealsWithProduct(productId: string): boolean {
-    return this.deals.some((d) => d.productId === productId);
+  async hasDealsWithProduct(productId: string): Promise<boolean> {
+    const count = await this.dealsRepo.count({ where: { productId } });
+    return count > 0;
   }
 
-  private validateClientAndProduct(clientId: string, productId: string) {
+  private async validateClientAndProduct(clientId: string, productId: string) {
     try {
-      this.clientsService.findOne(clientId);
+      await this.clientsService.findOne(clientId);
     } catch {
       throw new BadRequestException(
         `Client with ID ${clientId} does not exist`,
       );
     }
     try {
-      this.productsService.findOne(productId);
+      await this.productsService.findOne(productId);
     } catch {
       throw new BadRequestException(
         `Product with ID ${productId} does not exist`,
